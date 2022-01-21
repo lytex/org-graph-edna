@@ -27,19 +27,19 @@
 ;;; Code:
 ;;;
 
-(defcustom org-graph-edna-node-properties '("TODO" . "") "asdfadf")
+(defcustom org-graph-edna-node-properties '("TODO" . "#blue") "asdfadf")
 
 (defun org-graph-edna-export (filename)
 
-    (let ((queries-result (org-ql-query :select
-              '(concat "([["
+    (let* ((queries-links (org-ql-query :select
+              '(concat "([[["
                            (concat "org-protocol://roam-node?node="
                                    (cdar
                                     (org-entry-properties nil "ID")))
                        " "
                        (substring-no-properties
                         (org-get-heading :no-tags :no-todo :no-priority :no-comment))
-                       "]]) --> ([["
+                       "]]]) --> ([[["
                         (concat "org-protocol://roam-node?node="
                         (string-trim
                         (cdar
@@ -53,19 +53,64 @@
                             "ids(\"" "\")"))
                             (substring-no-properties
                               (org-get-heading :no-tags :no-todo :no-priority :no-comment)))
-                        "]]) #blue\n"
+                        "]]]) #blue\n"
 )
               :from
               (org-agenda-files)
               :where
               '(and (regexp ":BLOCKER:  ids") t)
-              )))
+              ))
+
+          (queries-alist (org-ql-query :select
+              '(cons (concat "[[["
+                           (concat "org-protocol://roam-node?node="
+                                   (cdar
+                                    (org-entry-properties nil "ID")))
+                       " "
+                       (substring-no-properties
+                        (org-get-heading :no-tags :no-todo :no-priority :no-comment))
+                       "]]]")
+                (concat
+                       "[[["
+                        (concat "org-protocol://roam-node?node="
+                        (string-trim
+                        (cdar
+                          (org-entry-properties nil "BLOCKER"))
+                        "ids(\"id:" "\")"))
+                       " "
+                        (save-excursion (org-link-open-from-string
+                            (string-trim
+                            (cdar
+                              (org-entry-properties nil "BLOCKER"))
+                            "ids(\"" "\")"))
+                            (substring-no-properties
+                              (org-get-heading :no-tags :no-todo :no-priority :no-comment)))
+                        "]]]"
+                ))
+                :from
+                (org-agenda-files)
+                :where
+                '(and (regexp ":BLOCKER:  ids") t)
+                ))
+
+        (all-tasks (delete-dups (append (mapcar 'car queries-alist) (mapcar 'cdr queries-alist))))
+
+        (skin-settings (concat "skinparam usecase {\nBackgroundColor<< DONE >> LimeGreen\n}\n"))
+
+        (color-association (apply #'concat (mapcar #'(lambda (task) (concat "(" task ") << DONE >>\n" )) all-tasks )))
+
+        ;; (queries-result (concat skin-settings color-association (apply #'concat (mapcar #'(lambda (link) (concat "(" (car link)) ") --> (" (cdr link) ")") queries-alist ))))
+        (queries-result (concat skin-settings color-association (apply #'concat queries-links)))
+
+        )
 
         (org-babel-execute:plantuml
-         (concat "@startuml\n" (apply 'concat queries-result ) "\n@enduml")
-         (list (cons :file filename))
-         ))
+                (concat "@startuml\n" queries-result "\n@enduml")
+                (list (cons :file filename))
+                ))
     )
+
+;; (substring-no-properties (concat (org-get-todo-state)))
 
 (provide 'org-graph-edna)
 ;;; org-graph-edna.el ends here
