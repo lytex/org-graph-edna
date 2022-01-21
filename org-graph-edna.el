@@ -27,7 +27,7 @@
 ;;; Code:
 ;;;
 
-(defcustom org-graph-edna-node-properties '("TODO" . "#blue") "asdfadf")
+(defcustom org-graph-edna-node-properties '(("DONE" . "LimeGreen" ) ("BLOCK" . "Red") ("TODO" . "Gold")) "asdfadf")
 
 (defun org-graph-edna-export (filename)
 
@@ -93,11 +93,58 @@
                 '(and (regexp ":BLOCKER:  ids") t)
                 ))
 
-        (all-tasks (delete-dups (append (mapcar 'car queries-alist) (mapcar 'cdr queries-alist))))
+        (queries-todo (delete-dups (apply #'append (org-ql-query :select
+              '(list
+                (cons
+                       (concat "[[["
+                           (concat "org-protocol://roam-node?node="
+                                   (cdar
+                                    (org-entry-properties nil "ID")))
+                       " "
+                       (substring-no-properties
+                        (org-get-heading :no-tags :no-todo :no-priority :no-comment))
+                       "]]]")
 
-        (skin-settings (concat "skinparam usecase {\nBackgroundColor<< DONE >> LimeGreen\n}\n"))
+                        (substring-no-properties (concat (org-get-todo-state))))
 
-        (color-association (apply #'concat (mapcar #'(lambda (task) (concat "(" task ") << DONE >>\n" )) all-tasks )))
+                (cons
+                        (concat
+                       "[[["
+                        (concat "org-protocol://roam-node?node="
+                        (string-trim
+                        (cdar
+                          (org-entry-properties nil "BLOCKER"))
+                        "ids(\"id:" "\")"))
+                       " "
+                        (save-excursion (org-link-open-from-string
+                            (string-trim
+                            (cdar
+                              (org-entry-properties nil "BLOCKER"))
+                            "ids(\"" "\")"))
+                            (substring-no-properties
+                              (org-get-heading :no-tags :no-todo :no-priority :no-comment)))
+                        "]]]"
+                )
+
+                        (substring-no-properties (concat (org-get-todo-state))))
+                )
+                :from
+                (org-agenda-files)
+                :where
+                '(and (regexp ":BLOCKER:  ids") t)
+                ))))
+
+        (all-tasks (mapcar #'car queries-todo))
+
+        (skin-settings
+         (concat "\nskinparam usecase {\n"
+                (apply #'concat
+                (mapcar
+                        #'(lambda (x)
+                        (concat "BackgroundColor<< " (car x) " >> " (cdr x) "\n")) org-graph-edna-node-properties)) "}\n" ))
+
+        (color-association (apply #'concat (mapcar #'(lambda (task) (concat "(" (car task) ") <<" (cdr task) ">>\n" )) queries-todo ))   )
+
 
         ;; (queries-result (concat skin-settings color-association (apply #'concat (mapcar #'(lambda (link) (concat "(" (car link)) ") --> (" (cdr link) ")") queries-alist ))))
         (queries-result (concat skin-settings color-association (apply #'concat queries-links)))
@@ -107,10 +154,11 @@
         (org-babel-execute:plantuml
                 (concat "@startuml\n" queries-result "\n@enduml")
                 (list (cons :file filename))
-                ))
+                )
+      ;; (message queries-result)
+        )
     )
 
-;; (substring-no-properties (concat (org-get-todo-state)))
 
 (provide 'org-graph-edna)
 ;;; org-graph-edna.el ends here
